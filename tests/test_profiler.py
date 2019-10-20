@@ -37,20 +37,20 @@ class TestAsyncioProfile(TestCase):
         Profiler.statistics.clear()
         loop = asyncio.get_event_loop()
         Profiler.enable()
-        loop.run_until_complete(self.do_something())
+        loop.run_until_complete(self.async_do_something())
         Profiler.disable()
         print('\n\nNew Test\n\n')
         Profiler.print_statistics()
 
-    async def do_something(self):
-        await self.do_sleep()
-        await self.do_something_else()
+    async def async_do_something(self):
+        await self.async_do_sleep()
+        await self.async_do_something_else()
 
     @staticmethod
-    async def do_sleep():
+    async def async_do_sleep():
         await asyncio.sleep(.3)
 
     @staticmethod
-    async def do_something_else():
+    async def async_do_something_else():
         for _ in range(100):
-            pass
+            await asyncio.sleep(0)

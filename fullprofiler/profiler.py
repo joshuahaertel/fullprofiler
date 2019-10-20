@@ -1,3 +1,5 @@
+import asyncio
+import inspect
 import sys
 from collections import defaultdict
 from time import time
@@ -56,19 +58,47 @@ class Profiler:
 
     @classmethod
     def _start_callable_profile(cls, frame, _):
+        # Potential way to avoid issues when a function returns a future
+        # bool(frame.f_code.co_flags & inspect.CO_COROUTINE)
+
         cls.frame_to_start_time[frame] = time()
 
     @classmethod
-    def _end_callable_profile(cls, frame, _):
+    def _end_callable_profile(cls, frame, return_value):
         end_time = time()
-        start_time = cls.frame_to_start_time.get(frame)
-        if not start_time:
+        value = cls.frame_to_start_time.get(frame)
+        if not value:
             return
+
+        start_time = value
+
+        if (return_value
+                and asyncio.isfuture(return_value)
+                and not hasattr(return_value, 'real_start_time')):
+            return_value.real_start_time = start_time
+            return_value.frame = frame
+            return_value.add_done_callback(Profiler._fix_coroutines)
+            del cls.frame_to_start_time[frame]
+            return
+
         del cls.frame_to_start_time[frame]
+        cls._update_statistics(end_time, frame, start_time)
+
+    @staticmethod
+    def _fix_coroutines(future):
+        print('here')
+        end_time = time()
+        Profiler._update_statistics(
+            end_time, future.frame, future.real_start_time
+        )
+
+    @classmethod
+    def _update_statistics(cls, end_time, frame, start_time):
         total_time = end_time - start_time
         callable_statistic = cls.statistics[
             (frame.f_code, None)]  # type: Statistic
         callable_statistic.add_run_time(total_time)
+
 
     @classmethod
     def _start_c_callable_profile(cls, frame, _):
