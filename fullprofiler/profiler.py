@@ -5,6 +5,33 @@ from time import time
 from fullprofiler.statistic import Statistic
 
 
+class ProxyCFunc:
+    def __init__(self, c_func):
+        self.c_func = c_func
+
+    def __eq__(self, other):
+        try:
+            return (
+                    self.c_func == other or
+                    self.c_func == other.c_func
+            )
+        except:
+            return False
+
+    def __hash__(self):
+        try:
+            return hash(self.c_func)
+        except TypeError:
+            return hash(self.c_func.__qualname__)
+
+    def get_args(self):
+        return (
+            self.c_func.__module__ or '?',
+            '?',
+            self.c_func.__qualname__,
+        )
+
+
 class Profiler:
     frame_to_start_time = {}
     c_frame_to_start_time = {}
@@ -44,19 +71,19 @@ class Profiler:
         callable_statistic.add_run_time(total_time)
 
     @classmethod
-    def _start_c_callable_profile(cls, frame, c_func):
-        cls.c_frame_to_start_time[(frame, c_func)] = time()
+    def _start_c_callable_profile(cls, frame, _):
+        cls.c_frame_to_start_time[frame] = time()
 
     @classmethod
     def _end_c_callable_profile(cls, frame, c_func):
         end_time = time()
-        start_time = cls.c_frame_to_start_time.get((frame, c_func))
+        start_time = cls.c_frame_to_start_time.get(frame)
         if not start_time:
             return
-        del cls.c_frame_to_start_time[(frame, c_func)]
+        del cls.c_frame_to_start_time[frame]
         total_time = end_time - start_time
         callable_statistic = cls.statistics[
-            (frame.f_code, c_func)]  # type: Statistic
+            (frame.f_code, ProxyCFunc(c_func))]  # type: Statistic
         callable_statistic.add_run_time(total_time)
 
     @staticmethod
@@ -65,6 +92,7 @@ class Profiler:
             raise RuntimeError('Attempting to disable another profiler!')
         sys.setprofile(None)
         Profiler.frame_to_start_time.clear()
+        Profiler.c_frame_to_start_time.clear()
 
     @staticmethod
     def print_statistics(sort_key='mean', sort_order='descending'):
@@ -81,13 +109,9 @@ class Profiler:
             'filename | first line | name | count | total time | min | mean '
             '| max '
         )
-        for _, _, statistic, (code, c_func) in statistic_list:
-            if c_func:
-                code_args = (
-                    'builtin: {}'.format(c_func.__module__),
-                    '?',
-                    c_func.__qualname__
-                )
+        for _, _, statistic, (code, proxy_c_func) in statistic_list:
+            if proxy_c_func:
+                code_args = proxy_c_func.get_args()
             else:
                 code_args = (
                     code.co_filename,
